@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Group Allocation Platform</title>
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com; frame-src 'self' https://login.microsoftonline.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <link rel="stylesheet" href="./style.css">
-<script src="./msal-browser.min.js" defer></script>
-<script src="./cloud.js" defer></script>
+<script src="./jszip.min.js" defer></script>
+<script src="./workbook.js" defer></script>
 <script src="./app.js" defer></script>
 </head>
 <body>
@@ -26,28 +26,22 @@
           <button type="button" id="theme-dark" aria-pressed="false" data-i18n="dark">深色</button>
         </div>
       </div>
-      <div class="excel" id="excel-controls" hidden><span id="sync" role="status"></span>
-        <a id="open" data-i18n="openExcel" target="_blank" rel="noopener noreferrer">開啟 Excel ↗</a>
-        <button id="disconnect" type="button" data-i18n="disconnect">離開工作簿</button>
+      <div class="excel" id="excel-controls" hidden>
+        <span id="save-status" role="status"></span>
+        <button id="save" type="button" data-i18n="saveBoard">儲存安排</button>
+        <button id="export" type="button" data-i18n="exportExcel">匯出 Excel</button>
+        <button id="exit-demo" type="button" data-i18n="exitDemo" hidden>離開示範</button>
       </div>
     </div>
   </header>
   <section id="connection" class="connection" aria-labelledby="connect-title">
-    <h2 id="connect-title" data-i18n="connectTitle">連接 Excel</h2>
-    <p data-i18n="connectIntro">使用公司 Microsoft 365 帳戶連接有編輯權限嘅工作簿。</p>
-    <form id="connection-form">
-      <label><span data-i18n="workbookLink">Excel 工作簿連結</span><input id="workbook-link" type="url" required inputmode="url" autocomplete="off" spellcheck="false"></label>
-      <details id="connection-settings"><summary data-i18n="setup">Microsoft 365 設定</summary>
-        <label><span data-i18n="tenant">目錄（租戶）ID</span><input id="tenant-id" required autocomplete="off" spellcheck="false"></label>
-        <label><span data-i18n="client">應用程式（用戶端）ID</span><input id="client-id" required autocomplete="off" spellcheck="false"></label>
-        <p data-i18n="redirect">在 Microsoft Entra 將以下網址登記為 SPA 重新導向 URI。</p>
-        <code id="redirect-url"></code>
-      </details>
-      <div class="connection-actions">
-        <button id="connect" class="primary" type="submit" data-i18n="connect">登入並連接 Excel</button>
-        <button id="demo" type="button" data-i18n="demo">試用示範名單</button>
-      </div>
-    </form>
+    <h2 id="connect-title" data-i18n="connectTitle">匯入分組 Excel</h2>
+    <p data-i18n="connectIntro">只需匯入一次。之後喺工作台改安排，會自動儲存在呢個瀏覽器。</p>
+    <div class="connection-actions">
+      <input id="workbook-file" type="file" accept=".xlsx" hidden>
+      <button id="import" class="primary" type="button" data-i18n="importExcel">選擇 Excel 檔案</button>
+      <button id="demo" type="button" data-i18n="demo">試用示範名單</button>
+    </div>
     <p id="connection-status" role="status" hidden></p>
   </section>
   <main id="workbench" hidden>
@@ -67,7 +61,7 @@
       <h2 id="view-title">餐桌</h2><p id="counts"></p>
     </div>
     <p id="help" class="help">拖動姓名到另一張桌。點姓名可選目的地或交換座位。</p>
-    <p id="sync-help" class="help sync-help">可同時開啟工作台及 Excel。</p>
+    <p id="storage-help" class="help sync-help">安排儲存在呢個瀏覽器。</p>
     <p id="history-summary" class="help" hidden></p>
     <p id="message" class="message" aria-live="polite" hidden></p>
     <div id="issues" class="issues" hidden></div>
@@ -100,7 +94,7 @@
     <label><span data-i18n="moveTo">移至</span><select id="destination"></select></label>
     <label id="swap-label"><span data-i18n="swapWith">交換對象（選填）</span><select id="swap"></select></label>
     <p id="move-note" class="help"></p>
-    <button type="submit" class="primary" data-i18n="updateExcel">更新 Excel</button>
+    <button type="submit" class="primary" data-i18n="saveMove">儲存更改</button>
   </form>
 </dialog>
 </body>

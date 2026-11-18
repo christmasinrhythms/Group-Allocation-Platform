@@ -1,32 +1,34 @@
 const $ = (id) => document.getElementById(id);
 const views = { tables: 'table', groups: 'group', roster: null };
 let previousSeating = {};
-let state, workbook, binding = 0, dragged, undo, selected, loading = false, writing = false, failed = false;
+let state, workbook, binding = 0, dragged, undo, selected, loading = false, writing = false, exporting = false, failed = false;
 let history = new Map();
 let active = 'tables';
 let drawerOpen = false;
 
 const copy = {
-  connectTitle: ['連接 Excel', 'Connect Excel'],
-  connectIntro: ['使用公司 Microsoft 365 帳戶連接有編輯權限嘅工作簿。', 'Use your work Microsoft 365 account to connect a workbook you can edit.'],
-  workbookLink: ['Excel 工作簿連結', 'Excel workbook link'],
-  setup: ['Microsoft 365 設定', 'Microsoft 365 settings'],
-  tenant: ['目錄（租戶）ID', 'Directory (tenant) ID'],
-  client: ['應用程式（用戶端）ID', 'Application (client) ID'],
-  redirect: ['在 Microsoft Entra 將以下網址登記為 SPA 重新導向 URI。', 'Register this URL as the SPA redirect URI in Microsoft Entra.'],
-  connect: ['登入並連接 Excel', 'Sign in and connect Excel'],
-  disconnect: ['離開工作簿', 'Disconnect workbook'],
+  connectTitle: ['匯入分組 Excel', 'Import grouping Excel'],
+  connectIntro: ['只需匯入一次。之後喺工作台改安排，會自動儲存在呢個瀏覽器。', 'Import once. The workbench saves future changes in this browser.'],
+  importExcel: ['選擇 Excel 檔案', 'Choose Excel file'],
+  importing: ['正在匯入分組名單…', 'Importing roster…'],
+  saveBoard: ['儲存安排', 'Save arrangements'],
+  exportExcel: ['匯出 Excel', 'Export Excel'],
+  exporting: ['正在產生 Excel…', 'Preparing Excel…'],
+  exported: ['已產生 Excel 檔案。', 'Excel file generated.'],
+  exportError: ['未能匯出 Excel。', 'Could not export Excel.'],
+  exitDemo: ['離開示範', 'Exit demo'],
+  saveMove: ['儲存更改', 'Save change'],
   demo: ['試用示範名單', 'Try demo roster'],
   demoMode: ['示範模式', 'Demo mode'],
   demoHelp: ['示範只使用虛構名單。試做嘅改動會在離開示範時清除。', 'The demo uses fictional names. Trial changes clear when you leave the demo.'],
   demoSaved: ['已更新示範名單。', 'Demo roster updated.'],
   updateDemo: ['更新示範名單', 'Update demo roster'],
-  cloudMode: ['已連接 Excel 網頁版', 'Connected to Excel for the web'],
-  cloudHelp: ['可同時開啟 Excel。Excel 自動儲存後，工作台會讀取更新。', 'Keep Excel open alongside the board. The board checks for updates after Excel autosaves.'],
-  connecting: ['正在連接 Microsoft 365…', 'Connecting to Microsoft 365…'],
+  stored: ['已儲存在此瀏覽器', 'Saved in this browser'],
+  saving: ['正在儲存…', 'Saving…'],
+  storeUnavailable: ['瀏覽器暫時未能讀取已存安排。', 'The browser could not read the saved arrangements.'],
+  storageHelp: ['安排會自動儲存在呢個瀏覽器。匯出 Excel 可另存一份。', 'Changes save automatically in this browser. Export Excel to keep a copy.'],
   language: ['語言', 'Language'], theme: ['顯示主題', 'Appearance'],
   light: ['淺色', 'Light'], dark: ['深色', 'Dark'],
-  saveBook: ['儲存工作簿', 'Save workbook'], openExcel: ['開啟 Excel ↗', 'Open Excel ↗'],
   view: ['檢視', 'View'], tables: ['餐桌', 'Tables'], groups: ['遊戲組', 'Game groups'], roster: ['總名單', 'Roster'],
   tableField: ['餐桌', 'Table'], groupField: ['遊戲組', 'Game group'],
   search: ['搜尋姓名或部門', 'Name or department'], splitFilter: ['只看與舊同桌分開', 'Only separated tablemates'],
@@ -37,15 +39,8 @@ const copy = {
   dropTargets: ['拖放目的地', 'Drop destinations'], close: ['關閉', 'Close'],
   formerTablemates: ['去年同桌', 'Last year’s tablemates'],
   assignmentField: ['調整項目', 'Assignment type'], moveTo: ['移至', 'Move to'], swapWith: ['交換對象（選填）', 'Swap with (optional)'],
-  updateExcel: ['更新 Excel', 'Update Excel'],
   tableNumber: ['第 {n} 桌', 'Table {n}'], groupNumber: ['第 {n} 組', 'Group {n}'],
   people: ['{n} 人', '{n} people'], onePerson: ['1 人', '1 person'], hostTable: ['主家席', 'Head table'],
-  disconnected: ['Excel 同步中斷', 'Excel sync interrupted'], writingExcel: ['正在更新 Excel…', 'Updating Excel…'],
-  readingExcel: ['正在讀取 Excel…', 'Reading Excel…'], paused: ['Excel 暫停同步', 'Excel sync paused'],
-  live: ['Excel 即時同步', 'Live Excel sync'], unsaved: ['有未儲存更改', 'Unsaved changes'],
-  syncedFile: ['已同步 Excel 檔案', 'Excel file synced'],
-  syncLiveHelp: ['在 Excel 按 Enter 完成輸入後，工作台會自動更新。按 ⌘S 或「儲存工作簿」保留更改。', 'Press Enter after editing a cell to sync. Press ⌘S or select Save workbook to keep changes.'],
-  syncFileHelp: ['網頁移位會更新連結的 Excel。', 'Moves update the linked Excel file.'],
   splitTables: ['分坐不同枱', 'Different tables'], splitGroups: ['不同遊戲組', 'Different groups'],
   adjustPerson: ['調整 {name}', 'Edit {name}'], overBadge: ['超額', 'Over capacity'],
   noFiltered: ['沒有符合篩選嘅同事。', 'No matches for the current filters.'],
@@ -69,18 +64,16 @@ const copy = {
   tablemateCount: ['今年名單有 {n} 位舊同桌。點姓名可查看或調整。', 'Last year’s tablemates on this roster: {n}. Click a name to review or move.'],
   noTablemate: ['今年名單內沒有其他已核對的舊同桌。', 'No other verified tablemates on this year’s roster.'],
   moveDirect: ['直接移動', 'Move without swapping'],
-  readOnly: ['Excel 目前以唯讀模式開啟。', 'The Excel workbook is open as read-only.'],
+  readOnly: ['工作台目前只可查看。', 'The board is read-only.'],
   fullTable: ['呢張枱已滿。可選一位同事交換。', 'This table is full. Select someone to swap with.'],
-  excelUpdated: ['已讀取 Excel 嘅最新內容。', 'Latest Excel changes loaded.'],
-  retrySelection: ['已讀取 Excel 最新內容，請重新選擇要移動嘅人。', 'Excel has changed. Select the person again to move them.'],
-  couldNotRead: ['未能讀取 Excel。', 'Could not read Excel.'],
+  excelUpdated: ['已載入最新安排。', 'Latest arrangements loaded.'],
+  retrySelection: ['安排已變更，請重新選擇。', 'The board changed. Select the person again.'],
+  couldNotRead: ['未能讀取安排。', 'Could not read the arrangements.'],
   couldNotSave: ['未能儲存。', 'Could not save.'],
-  changedLive: ['已更新開啟中嘅 Excel。', 'Updated in the open workbook.'],
-  changedFile: ['已儲存到 Excel。', 'Saved to Excel.'],
+  changedFile: ['已儲存到工作台。', 'Saved to the workbench.'],
   undone: ['已復原。', 'Move undone.'], swapped: ['已交換。', 'Assignments swapped.'],
   overNotice: ['第 {table} 桌有 {n} 人，超出容量。', 'Table {table} has {n} people and is over capacity.'],
-  editExcel: ['可在 Excel 嘅 Assignments 頁更改黃色欄位。', 'Edit the yellow cells on the Assignments sheet in Excel.'],
-  saved: ['Excel 工作簿已儲存。', 'Excel workbook saved.'],
+  saved: ['分組安排已儲存。', 'Arrangements saved.'],
   couldNotComplete: ['未能完成操作。', 'Could not complete the request.'],
 };
 
@@ -123,7 +116,6 @@ function applyPreferences() {
 
 function translateDiagnostic(message) {
   if (!message || language === 'zh') return message;
-  if (/Automation|自動化/.test(message)) return 'In System Settings → Privacy & Security → Automation, allow the app running this desk to control Microsoft Excel.';
   const missingId = message.match(/Excel 第 (\d+) 列缺少有效的名單 ID 或姓名/);
   if (missingId) return `Row ${missingId[1]} is missing a valid roster ID or name.`;
   const duplicateId = message.match(/Excel 有重複的名單 ID (\w+)/);
@@ -133,17 +125,9 @@ function translateDiagnostic(message) {
     const [,id,row,field,limit]=invalidAssignment;
     return `${id} (row ${row}): choose a ${field === '遊戲組' ? 'group' : 'table'} from 1–${limit}, or leave it blank.`;
   }
-  if (/暫時未能連線/.test(message)) return 'Excel is temporarily unavailable. Press Enter to finish editing the cell, then try again.';
-  if (/暫未開啟/.test(message)) return 'Open the linked workbook in Excel.';
-  if (/唯讀/.test(message)) return t('readOnly');
-  if (/結構|欄位|遊戲組編號/.test(message) && /Overview|Assignments/.test(message)) return 'Check the layout of the Assignments and Overview sheets.';
-  if (/儲存這份工作簿/.test(message)) return 'Could not save this workbook. Press ⌘S directly in Excel.';
-  if (/重新選擇|剛更新|交換對象已移動/.test(message)) return t('retrySelection');
-  if (/重新整理/.test(message)) return 'Refresh the workbench and try again.';
-  if (/暫時讀不到/.test(message)) return 'Could not read the workbook. Check the file location.';
   if (/目的地/.test(message)) return 'Invalid destination.';
   if (/找不到(這位|要交換)/.test(message)) return 'Could not find the selected person.';
-  return /[\u3400-\u9fff]/.test(message) ? t('couldNotComplete') : message;
+  return message;
 }
 
 function elem(tag, css, text) {
@@ -177,16 +161,16 @@ function renderNotice() {
 }
 
 function handleStatus() {
-  $('sync').textContent = failed ? t('disconnected') : writing ? t('writingExcel')
-    : !state ? t('readingExcel') : workbook?.demo ? t('demoMode') : t('cloudMode');
-  $('sync-help').textContent = t(workbook?.demo ? 'demoHelp' : 'cloudHelp');
-  $('undo').disabled = !undo || writing || failed || !state?.writable;
-  $('disconnect').disabled = writing;
-  $('open').hidden = !workbook?.url;
-  if (workbook?.url) $('open').href = workbook.url;
+  $('save-status').textContent = failed ? t('storeUnavailable') : writing ? t('saving')
+    : workbook?.demo ? t('demoMode') : t('stored');
+  $('storage-help').textContent = t(workbook?.demo ? 'demoHelp' : 'storageHelp');
+  $('undo').disabled = !undo || writing || exporting || failed || !state?.writable;
+  $('save').hidden = $('export').hidden = Boolean(workbook?.demo);
+  $('exit-demo').hidden = !workbook?.demo;
+  $('save').disabled = $('export').disabled = writing || exporting || failed;
   const submit = $('move-form').querySelector('[type=submit]');
-  submit.disabled = writing || failed || !state?.writable;
-  submit.textContent = t(workbook?.demo ? 'updateDemo' : 'updateExcel');
+  submit.disabled = writing || exporting || failed || !state?.writable;
+  submit.textContent = t(workbook?.demo ? 'updateDemo' : 'saveMove');
 }
 
 function peopleFor(field, value) {
@@ -442,7 +426,7 @@ function render() {
 }
 
 async function refresh() {
-  if (!workbook || loading || writing) return;
+  if (!workbook || loading || writing || exporting) return;
   loading = true;
   const currentBinding = binding;
   try {
@@ -450,8 +434,7 @@ async function refresh() {
     if (currentBinding !== binding || writing) return;
     previousSeating = body.state.previousSeating;
     const changed = state && body.state.revision !== state.revision;
-    const statusChanged = state && ['mode','excelSaved','writable','syncError'].some((key) => state[key] !== body.state[key]);
-    if (failed || !state || changed || statusChanged) {
+    if (failed || !state || changed) {
       if (failed || changed) {
         undo = null;
         note(state ? () => t('excelUpdated') : '');
@@ -475,7 +458,7 @@ async function refresh() {
 }
 
 async function move(change, isUndo = false) {
-  if (!state || !workbook || writing || failed) return;
+  if (!state || !workbook || writing || exporting || failed) return;
   writing = true;
   handleStatus();
   try {
@@ -574,7 +557,7 @@ function swapOptions() {
   swap.replaceChildren(new Option(t('moveDirect'),''), ...candidates.map((person) =>
     new Option(`${person.name} · ${person.department} [${person.id}]`,person.id)));
   $('swap-label').hidden = !candidates.length;
-  $('move-note').textContent = translateDiagnostic(state.syncError) || (!state.writable ? t('readOnly')
+  $('move-note').textContent = (!state.writable ? t('readOnly')
     : field === 'table' && target && candidates.length >= state.capacity ? t('fullTable') : '');
 }
 
@@ -629,49 +612,87 @@ async function enterWorkbook(connection) {
   render();
 }
 
-$('redirect-url').textContent = new URL('./auth.html', location.href).href;
-$('connection-form').addEventListener('invalid', event => {
-  if (event.target.closest('details')) $('connection-settings').open = true;
-}, true);
-$('connection-form').onsubmit = async event => {
-  event.preventDefault();
-  $('connect').disabled = $('demo').disabled = true;
-  showConnectionStatus(t('connecting'));
+function enableImport(enabled) {
+  $('import').disabled = $('demo').disabled = !enabled;
+}
+
+$('import').onclick = () => $('workbook-file').click();
+$('workbook-file').onchange = async () => {
+  const file = $('workbook-file').files[0];
+  if (!file) return;
+  enableImport(false);
+  showConnectionStatus(t('importing'));
   try {
-    const connection = await CloudWorkbook.connect({
-      link: $('workbook-link').value.trim(),
-      clientId: $('client-id').value.trim(),
-      tenantId: $('tenant-id').value.trim(),
-    });
-    await enterWorkbook(connection);
-    $('workbook-link').value = '';
+    await enterWorkbook(await AllocationWorkbook.importExcel(file));
     showConnectionStatus('');
   } catch (error) {
     showConnectionStatus(error.message);
   } finally {
-    $('connect').disabled = $('demo').disabled = false;
+    $('workbook-file').value = '';
+    enableImport(true);
   }
 };
-$('demo').onclick = async () => enterWorkbook(CloudWorkbook.demo());
-$('disconnect').onclick = async () => {
-  const previous = workbook;
+$('demo').onclick = async () => enterWorkbook(AllocationWorkbook.demo());
+$('exit-demo').onclick = () => {
   binding += 1;
   workbook = state = undo = dragged = selected = null;
   previousSeating = {};
   drawerOpen = false;
   $('workbench').hidden = $('excel-controls').hidden = $('unassigned-toggle').hidden = $('unassigned-drawer').hidden = true;
   $('connection').hidden = false;
-  $('open').removeAttribute('href');
   $('board').replaceChildren();
   if ($('move-dialog').open) $('move-dialog').close();
-  $('person-detail').replaceChildren();
-  $('former-tablemates').replaceChildren();
-  $('unassigned-people').replaceChildren();
   note('');
-  try { await previous.close?.(); }
-  catch (error) { showConnectionStatus(error.message); }
+};
+$('save').onclick = async () => {
+  writing = true;
+  handleStatus();
+  try {
+    const saved = await workbook.save();
+    if (saved.revision !== state.revision) undo = null;
+    state = saved;
+    previousSeating = saved.previousSeating;
+    note(() => t('saved'));
+  } catch (error) {
+    note(() => error.message || t('couldNotSave'),true);
+  } finally {
+    writing = false;
+    render();
+  }
+};
+$('export').onclick = async () => {
+  exporting = true;
+  handleStatus();
+  note(() => t('exporting'));
+  try {
+    const {data, filename} = await workbook.export();
+    const url = URL.createObjectURL(data);
+    const link = elem('a');
+    link.href = url;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    note(() => t('exported'));
+  } catch (error) {
+    note(() => (error.message ? t('exportError') + ' ' + error.message : t('exportError')),true);
+  } finally {
+    exporting = false;
+    render();
+  }
 };
 window.addEventListener('focus', refresh);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void refresh(); });
 applyPreferences();
-setInterval(() => { if (!document.hidden && !workbook?.demo) void refresh(); }, 12000);
+(async () => {
+  enableImport(false);
+  try {
+    const saved = await AllocationWorkbook.open();
+    if (saved) await enterWorkbook(saved);
+  } catch (error) {
+    showConnectionStatus(t('storeUnavailable') + ' ' + error.message);
+  } finally {
+    enableImport(true);
+  }
+})();
