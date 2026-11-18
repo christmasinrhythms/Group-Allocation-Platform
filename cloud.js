@@ -94,8 +94,21 @@ const CloudWorkbook = (() => {
     return url;
   }
 
+  function lookupPath(value) {
+    let url;
+    try { url = new URL(value); } catch {}
+    if (url?.origin === 'https://graph.microsoft.com' && !url.username && !url.password && !url.search && !url.hash) {
+      const item = url.pathname.match(/^\/v1\.0(\/drives\/[A-Za-z0-9!_-]+\/items\/[A-Za-z0-9!_-]+)$/);
+      if (item) return {path:item[1], shareUrl:null};
+    }
+    const shareUrl = readLink(value);
+    const bytes = new TextEncoder().encode(shareUrl.href);
+    const encoded = 'u!' + btoa(String.fromCharCode(...bytes)).replaceAll('/', '_').replaceAll('+', '-').replace(/=+$/, '');
+    return {path:'/shares/' + encoded + '/driveItem', shareUrl};
+  }
+
   async function connect({link, clientId, tenantId}) {
-    const url = readLink(link);
+    const lookup = lookupPath(link);
     if (!guid.test(clientId) || !guid.test(tenantId)) {
       throw bilingual('請填上有效嘅 Microsoft Entra 租戶 ID 同應用程式 ID。', 'Enter your Microsoft Entra tenant and application IDs.');
     }
@@ -139,9 +152,7 @@ const CloudWorkbook = (() => {
       return response.json();
     }
 
-    const bytes = new TextEncoder().encode(url.href);
-    const encoded = 'u!' + btoa(String.fromCharCode(...bytes)).replaceAll('/', '_').replaceAll('+', '-').replace(/=+$/, '');
-    const item = await request('/shares/' + encoded + '/driveItem?$select=id,name,webUrl,parentReference,file');
+    const item = await request(lookup.path + '?$select=id,name,webUrl,parentReference,file');
     if (!item.file || !/\.xlsx$/i.test(item.name) || !item.parentReference?.driveId) {
       throw bilingual('請使用包含 Assignments 同 Overview 嘅 .xlsx 工作簿。', 'Link to the .xlsx workbook with the Assignments and Overview sheets.');
     }
@@ -163,7 +174,7 @@ const CloudWorkbook = (() => {
       return parseWorkbook(grid.values, labels, previous);
     }
     return {
-      url:readLink(item.webUrl || url.href).href,
+      url:readLink(item.webUrl || lookup.shareUrl?.href).href,
       async read() {
         labels = null;
         previous = null;
